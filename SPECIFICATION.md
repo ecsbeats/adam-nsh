@@ -44,4 +44,4 @@ Then we'll work on the connection to all of the data sources and the importing o
 
 Afer, we can create an agent that is able to generate Clickhouse queries. We'll use either DSPy or LLaMA Index. Then we'll create an API (possibly use MCP) to request the required data. We can even use RL if we have time.
 
-The meat of everything will be in this agentic setup and the local imagery/ais integration, and that will be the most novel part of our application, so we will keep the data collection and interface (pretty BS) as simple as possible.
+The meat of everything will be in this agentic setup and the local imagery/ais integration, and that will be the most novel part of our application, so we will keep the data collection and interface (no BS) as simple as possible.
