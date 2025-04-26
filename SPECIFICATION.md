@@ -1,5 +1,11 @@
 # Specification for Adam Maritime Intelligence System (AMIS)
 
+## Team
+
+Members:
+* Adam Blumenfeld, CEO at CSX Labs
+* Sachin Naik, CEO at CRISPAI
+
 Problem: Multi-vessel tracking and analysis sucks. The data is siloed and the analysis is manual. We want to automatically create pipelines to track and analyze the data.
 
 Scope: Collect, Stream, and Analyze.
