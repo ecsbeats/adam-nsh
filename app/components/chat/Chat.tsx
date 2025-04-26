@@ -1,7 +1,9 @@
+'use client'
+
 import { useState } from 'react'
 
 export default function Chat() {
-  const [messages, setMessages] = useState([])
+  const [messages, setMessages] = useState<any[]>([])
   const [input, setInput] = useState('')
 
   const sendMessage = (e: React.FormEvent) => {
