@@ -49,6 +49,19 @@ export default function Map() {
     // Initialize map only once
     if (map.current) return;
     
+    // Add logging here
+    if (mapContainer.current) {
+      console.log('Map container dimensions before init:', 
+        mapContainer.current.offsetWidth, 
+        mapContainer.current.offsetHeight
+      );
+    } else {
+      console.error('Map container ref is not available before init');
+      setMapError('Map container element not found.');
+      return;
+    }
+    // End logging
+
     // Create map instance - using the public token only
     mapboxgl.accessToken = MAPBOX_CONFIG.accessToken; 
     
@@ -124,8 +137,10 @@ export default function Map() {
   }, []);
 
   return (
-    <div className="flex-1 relative">
-      <div ref={mapContainer} className="absolute inset-0" />
+    // Remove flex-1, keep relative for positioning context
+    <div className="relative h-full">
+      {/* Use w-full h-full to ensure explicit dimensions */}
+      <div ref={mapContainer} className="w-full h-full" />
       
       {/* Vessel markers - using vessels from API */}
       {mapLoaded && showVessels && vessels.map(vessel => (
@@ -139,7 +154,7 @@ export default function Map() {
       {/* Error message */}
       {mapError && (
         <div className="absolute inset-0 flex items-center justify-center bg-neutral-100 dark:bg-neutral-900">
-          <div className="bg-neutral-200 dark:bg-neutral-800 p-4 rounded-md shadow-md">
+          <div className="bg-neutral-200 dark:bg-neutral-800 p-4 shadow-md">
             <h3 className="text-neutral-900 dark:text-neutral-100 font-medium mb-2">Map Error</h3>
             <p className="text-neutral-700 dark:text-neutral-300">{mapError}</p>
           </div>
@@ -147,7 +162,7 @@ export default function Map() {
       )}
       
       {/* Layer toggle controls */}
-      <div className="absolute top-0 left-0 m-4 bg-neutral-100/90 dark:bg-neutral-800/90 p-3 rounded-md shadow-md">
+      <div className="absolute top-0 left-0 m-4 bg-neutral-100/90 dark:bg-neutral-800/90 p-3 shadow-md">
         <h3 className="text-neutral-900 dark:text-neutral-100 font-medium text-sm mb-3">Map Layers</h3>
         
         {/* Style selection */}
@@ -156,7 +171,7 @@ export default function Map() {
           <div className="flex space-x-2">
             <button 
               onClick={() => setMapStyle('dark')}
-              className={`px-2 py-1 text-xs rounded-md ${
+              className={`px-2 py-1 text-xs ${
                 mapStyle === 'dark' 
                   ? 'bg-neutral-800 text-neutral-100' 
                   : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
@@ -166,7 +181,7 @@ export default function Map() {
             </button>
             <button 
               onClick={() => setMapStyle('satellite')}
-              className={`px-2 py-1 text-xs rounded-md ${
+              className={`px-2 py-1 text-xs ${
                 mapStyle === 'satellite' 
                   ? 'bg-neutral-800 text-neutral-100' 
                   : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
@@ -176,7 +191,7 @@ export default function Map() {
             </button>
             <button 
               onClick={() => setMapStyle('satelliteStreets')}
-              className={`px-2 py-1 text-xs rounded-md ${
+              className={`px-2 py-1 text-xs ${
                 mapStyle === 'satelliteStreets' 
                   ? 'bg-neutral-800 text-neutral-100' 
                   : 'bg-neutral-200 text-neutral-700 dark:bg-neutral-700 dark:text-neutral-300'
@@ -225,8 +240,8 @@ export default function Map() {
       
       {/* Attribution */}
       <div className="absolute bottom-0 right-0 p-2 text-xs text-neutral-500">
-        © <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="hover:underline">Mapbox</a> |
-        © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="hover:underline">OpenStreetMap</a>
+        &copy; <a href="https://www.mapbox.com/about/maps/" target="_blank" rel="noopener noreferrer" className="hover:underline">Mapbox</a> |
+        &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer" className="hover:underline">OpenStreetMap</a>
       </div>
     </div>
   )

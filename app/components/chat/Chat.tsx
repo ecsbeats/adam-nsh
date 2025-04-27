@@ -77,16 +77,16 @@ export default function Chat() {
         
         {isLoading && (
           <div className="flex justify-start">
-            <div className="w-8 h-8 rounded-full bg-neutral-300 dark:bg-neutral-700 flex items-center justify-center mr-2">
+            <div className="w-8 h-8  bg-neutral-300 dark:bg-neutral-700 flex items-center justify-center mr-2">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5 text-neutral-700 dark:text-neutral-300">
                 <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM6 8a2 2 0 11-4 0 2 2 0 014 0zM1.49 15.326a.78.78 0 01-.358-.442 3 3 0 014.308-3.516 6.484 6.484 0 00-1.905 3.959c-.023.222-.014.442.025.654a4.97 4.97 0 01-2.07-.655zM16.44 15.98a4.97 4.97 0 002.07-.654.78.78 0 00.357-.442 3 3 0 00-4.308-3.517 6.484 6.484 0 011.907 3.96 2.32 2.32 0 01-.026.654zM18 8a2 2 0 11-4 0 2 2 0 014 0zM5.304 16.19a.844.844 0 01-.277-.71 5 5 0 019.947 0 .843.843 0 01-.277.71A6.975 6.975 0 0110 18a6.974 6.974 0 01-4.696-1.81z" />
               </svg>
             </div>
             <div className="bg-neutral-200 text-neutral-900 dark:bg-neutral-800 dark:text-neutral-50 px-4 py-2 rounded-lg max-w-[80%]">
               <div className="flex space-x-1">
-                <div className="w-2 h-2 bg-neutral-400 dark:bg-neutral-500 rounded-full animate-pulse"></div>
-                <div className="w-2 h-2 bg-neutral-400 dark:bg-neutral-500 rounded-full animate-pulse delay-75"></div>
-                <div className="w-2 h-2 bg-neutral-400 dark:bg-neutral-500 rounded-full animate-pulse delay-150"></div>
+                <div className="w-2 h-2 bg-neutral-400 dark:bg-neutral-500  animate-pulse"></div>
+                <div className="w-2 h-2 bg-neutral-400 dark:bg-neutral-500  animate-pulse delay-75"></div>
+                <div className="w-2 h-2 bg-neutral-400 dark:bg-neutral-500  animate-pulse delay-150"></div>
               </div>
             </div>
           </div>

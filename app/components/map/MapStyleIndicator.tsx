@@ -41,14 +41,13 @@ export default function MapStyleIndicator({ style }: MapStyleIndicatorProps) {
     }
   };
 
-  const { icon, label } = getStyleInfo();
+  const { icon } = getStyleInfo();
 
   return (
     <div className="absolute bottom-0 left-0 m-4 bg-neutral-100/90 dark:bg-neutral-800/90 rounded-md px-2 py-1 flex items-center shadow-md">
       <span className="text-neutral-600 dark:text-neutral-300">
         {icon}
       </span>
-      <span className="ml-1.5 text-xs text-neutral-700 dark:text-neutral-300">{label}</span>
     </div>
   );
 }
