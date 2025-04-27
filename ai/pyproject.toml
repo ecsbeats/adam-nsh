@@ -4,5 +4,15 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-dependencies = []
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "langchain",
+    "langchain-openai",
+    "python-dotenv",
+    "requests",
+    "h3", # Added for H3 index manipulation
+    "langchain-core" # Added for streaming/LCEL
+]
 package-mode = false

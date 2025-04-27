@@ -9,7 +9,7 @@ export default function Home() {
       {/* Apply flex, flex-1, and overflow-hidden to the container */}
       <div className="flex flex-1 overflow-hidden">
         {/* Add min-w-0 here to allow the Map component to shrink if needed */}
-        <div className="flex-1 relative min-w-0">
+        <div className="flex-1 relative min-w-0 dark">
           <Map />
         </div>
         <Chat />
