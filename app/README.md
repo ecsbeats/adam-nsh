@@ -76,6 +76,24 @@ The application is structured with clean code principles:
 - Satellite Imagery: From Maxar
 - Real-time Camera: From device cameras
 
+## Security
+
+This application follows security best practices for API credential management:
+
+- Server-side secrets: All sensitive API tokens (starting with `sk.`) are kept server-side only
+- Public tokens: Only public tokens (starting with `pk.`) are exposed to the client
+- API proxying: All requests to external APIs that require secret tokens are proxied through our server 
+- Environment separation: Different environment variables are used for client vs. server contexts
+
+### API Keys
+
+The application uses two types of Mapbox tokens:
+
+1. `MAPBOX_ACCESS_TOKEN` (secret token) - Used only in server-side API routes
+2. `NEXT_PUBLIC_MAPBOX_PUBLIC_TOKEN` (public token) - Used for client-side map rendering
+
+Never expose secret tokens in client-side code or commit them to version control.
+
 ## Project Status
 
 This project is in active development.

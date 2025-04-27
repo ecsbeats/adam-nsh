@@ -4,7 +4,8 @@ import { useRef, useEffect, useState } from 'react'
 import mapboxgl from 'mapbox-gl'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { MAPBOX_CONFIG, validateMapboxToken } from '@/lib/map/mapbox'
-import { sampleVessels } from '@/lib/data/sampleVessels'
+import { fetchVessels } from '@/lib/api/vessels'
+import { AISData } from '@/lib/adapters/types'
 import VesselMarker from './VesselMarker'
 
 export default function Map() {
@@ -12,19 +13,41 @@ export default function Map() {
   const map = useRef<mapboxgl.Map | null>(null)
   const [mapLoaded, setMapLoaded] = useState(false)
   const [mapError, setMapError] = useState<string | null>(null)
+  const [vessels, setVessels] = useState<AISData[]>([])
+  const [loading, setLoading] = useState(true)
 
+  // Fetch vessel data from secure API
+  useEffect(() => {
+    async function loadVessels() {
+      try {
+        setLoading(true);
+        const vesselData = await fetchVessels();
+        setVessels(vesselData);
+      } catch (error) {
+        console.error('Failed to load vessel data:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+    
+    if (mapLoaded) {
+      loadVessels();
+    }
+  }, [mapLoaded]);
+
+  // Initialize the map
   useEffect(() => {
     // Check if Mapbox token is available
     if (!validateMapboxToken()) {
-      setMapError('Mapbox API token not found. Please add it to your .env file.');
+      setMapError('Mapbox public token not found. Please add it to your .env file.');
       return;
     }
 
     // Initialize map only once
     if (map.current) return;
     
-    // Create map instance
-    mapboxgl.accessToken = MAPBOX_CONFIG.accessToken;
+    // Create map instance - using the public token only
+    mapboxgl.accessToken = MAPBOX_CONFIG.accessToken; 
     
     try {
       const newMap = new mapboxgl.Map({
@@ -74,8 +97,8 @@ export default function Map() {
     <div className="flex-1 relative">
       <div ref={mapContainer} className="absolute inset-0" />
       
-      {/* Vessel markers */}
-      {mapLoaded && sampleVessels.map(vessel => (
+      {/* Vessel markers - using vessels from API */}
+      {mapLoaded && vessels.map(vessel => (
         <VesselMarker 
           key={vessel.vesselId} 
           map={map.current} 
@@ -99,13 +122,26 @@ export default function Map() {
         <div className="flex flex-col space-y-1">
           <label className="flex items-center text-sm text-neutral-700 dark:text-neutral-300">
             <input type="checkbox" checked={true} className="mr-2" readOnly /> 
-            Vessels
+            Vessels {loading && (
+              <span className="ml-2 inline-flex">
+                <span className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-pulse"></span>
+                <span className="ml-1 w-1.5 h-1.5 bg-neutral-500 rounded-full animate-pulse delay-75"></span>
+                <span className="ml-1 w-1.5 h-1.5 bg-neutral-500 rounded-full animate-pulse delay-150"></span>
+              </span>
+            )}
           </label>
           <label className="flex items-center text-sm text-neutral-700 dark:text-neutral-300">
             <input type="checkbox" checked={false} className="mr-2" readOnly /> 
             Satellite Imagery
           </label>
         </div>
+        
+        {/* Vessel count */}
+        {!loading && vessels.length > 0 && (
+          <div className="mt-2 pt-2 border-t border-neutral-200 dark:border-neutral-700 text-xs text-neutral-500">
+            {vessels.length} vessels active
+          </div>
+        )}
       </div>
       
       {/* Attribution */}
