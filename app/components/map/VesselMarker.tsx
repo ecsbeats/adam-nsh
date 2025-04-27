@@ -13,15 +13,15 @@ export default function VesselMarker({ map, vessel }: VesselMarkerProps) {
   useEffect(() => {
     if (!map) return
     
-    // Create a vessel element
+    // Create a vessel element that's visible on both dark and satellite backgrounds
     const el = document.createElement('div')
     el.className = 'vessel-marker'
     el.style.width = '16px'
     el.style.height = '16px'
     el.style.borderRadius = '50%'
     el.style.background = '#60a5fa' // blue-400
-    el.style.border = '2px solid #fff'
-    el.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.1), 0 2px 4px rgba(0, 0, 0, 0.2)'
+    el.style.border = '2px solid rgba(255, 255, 255, 0.9)'
+    el.style.boxShadow = '0 0 0 1px rgba(0, 0, 0, 0.5), 0 0 8px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(255, 255, 255, 0.3)'
     el.style.cursor = 'pointer'
     
     // Set rotation based on vessel heading
@@ -39,15 +39,22 @@ export default function VesselMarker({ map, vessel }: VesselMarkerProps) {
       el.appendChild(arrow)
     }
     
-    // Create the popup
-    const popup = new mapboxgl.Popup({ offset: 15 })
+    // Create the popup with improved styling for visibility
+    const popup = new mapboxgl.Popup({ 
+      offset: 15,
+      className: 'vessel-popup' // Custom class for styling
+    })
       .setHTML(`
-        <div>
-          <h3 style="font-weight: bold;">${vessel.vesselInfo?.name || 'Unknown Vessel'}</h3>
-          <p>MMSI: ${vessel.vesselId}</p>
-          ${vessel.vesselInfo?.type ? `<p>Type: ${vessel.vesselInfo.type}</p>` : ''}
-          ${vessel.speed ? `<p>Speed: ${vessel.speed} knots</p>` : ''}
-          ${vessel.heading ? `<p>Heading: ${vessel.heading}°</p>` : ''}
+        <div style="padding: 4px; font-family: sans-serif;">
+          <h3 style="font-weight: bold; font-size: 14px; margin: 0 0 6px 0; color: #1a1a1a; border-bottom: 1px solid rgba(0,0,0,0.1); padding-bottom: 5px;">
+            ${vessel.vesselInfo?.name || 'Unknown Vessel'}
+          </h3>
+          <div style="font-size: 12px; color: #333;">
+            <p style="margin: 3px 0;"><strong>MMSI:</strong> ${vessel.vesselId}</p>
+            ${vessel.vesselInfo?.type ? `<p style="margin: 3px 0;"><strong>Type:</strong> ${vessel.vesselInfo.type}</p>` : ''}
+            ${vessel.speed ? `<p style="margin: 3px 0;"><strong>Speed:</strong> ${vessel.speed} knots</p>` : ''}
+            ${vessel.heading ? `<p style="margin: 3px 0;"><strong>Heading:</strong> ${vessel.heading}°</p>` : ''}
+          </div>
         </div>
       `)
     
