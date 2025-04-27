@@ -60,7 +60,7 @@ export default function VesselMarker({ map, vessel }: VesselMarkerProps) {
             ${vessel.vesselInfo?.name || 'Unknown Vessel'}
           </h3>
           <div style="font-size: 12px; color: #333;">
-            <p style="margin: 3px 0;"><strong>MMSI:</strong> ${vessel.vesselId}</p>
+            <p style="margin: 3px 0;"><strong>MMSI:</strong> ${vessel.MMSI}</p>
             ${vessel.vesselInfo?.type ? `<p style="margin: 3px 0;"><strong>Type:</strong> ${vessel.vesselInfo.type}</p>` : ''}
             ${vessel.speed ? `<p style="margin: 3px 0;"><strong>Speed:</strong> ${vessel.speed} knots</p>` : ''}
             ${vessel.heading ? `<p style="margin: 3px 0;"><strong>Heading:</strong> ${vessel.heading}°</p>` : ''}

@@ -6,7 +6,8 @@ export interface DataSource {
 }
 
 export interface AISData {
-  vesselId: string
+  MMSI: number
+  uniqueKey?: string
   timestamp: string
   position: {
     lat: number
@@ -18,5 +19,12 @@ export interface AISData {
     name?: string
     callSign?: string
     type?: string
+    imo?: string
   }
+  Status?: number
+  Length?: number
+  Width?: number
+  Draft?: number
+  COG?: number
+  TransceiverClass?: string
 }

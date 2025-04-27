@@ -109,8 +109,37 @@ const Map = forwardRef<MapHandle>((props, ref) => {
     async function loadVessels() {
       try {
         setLoading(true);
-        const vesselData = await fetchVessels();
-        setVessels(vesselData);
+        // Fetch raw data (assuming it matches backend structure)
+        const rawVesselData: any[] = await fetchVessels(); // Use any[] temporarily
+        
+        // Map raw data to the clean AISData structure
+        const mappedVessels: AISData[] = rawVesselData.map(raw => ({
+          MMSI: raw.MMSI,
+          uniqueKey: `${raw.MMSI}-${raw.BaseDateTime}`, // Generate key
+          timestamp: raw.BaseDateTime,
+          position: {
+            lat: raw.LAT,
+            lon: raw.LON
+          },
+          heading: raw.Heading,
+          speed: raw.SOG, // Map SOG to speed
+          vesselInfo: {
+            name: raw.VesselName,
+            callSign: raw.CallSign,
+            // TODO: Map VesselType number to a meaningful string if needed
+            type: raw.VesselType !== undefined ? String(raw.VesselType) : undefined, 
+            imo: raw.IMO
+          },
+          // Include other fields directly if needed
+          Status: raw.Status,
+          Length: raw.Length,
+          Width: raw.Width,
+          Draft: raw.Draft,
+          COG: raw.COG,
+          TransceiverClass: raw.TransceiverClass
+        }));
+
+        setVessels(mappedVessels); // Set state with the processed data
       } catch (error) {
         console.error('Failed to load vessel data:', error);
       } finally {
@@ -213,13 +242,16 @@ const Map = forwardRef<MapHandle>((props, ref) => {
     <div className="relative h-full">
       <div ref={mapContainer} className="w-full h-full" />
       
-      {mapLoaded && showVessels && vessels.map(vessel => (
-        <VesselMarker 
-          key={vessel.vesselId} 
-          map={map.current} 
-          vessel={vessel} 
-        />
-      ))}
+      {mapLoaded && showVessels && vessels.map(vessel => {
+        console.log("Using key:", vessel.uniqueKey);
+        return (
+          <VesselMarker
+            key={vessel.uniqueKey}
+            map={map.current}
+            vessel={vessel}
+          />
+        );
+      })}
       
       {mapError && (
         <div className="absolute inset-0 flex items-center justify-center bg-neutral-100 dark:bg-neutral-900 z-10">

@@ -1,6 +1,6 @@
 import os
 import dspy
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -9,7 +9,10 @@ import uvicorn
 import asyncio
 import json
 from typing import List, Optional
+import numpy as np # Import numpy for inf handling
+import pandas as pd # Import pandas for isnull/notnull
 
+from data import load_data_by_geolocation
 from agent import MapChatAgent
 
 load_dotenv()
@@ -55,10 +58,18 @@ class HistoryMessage(BaseModel):
     role: str
     content: str
 
+# Define the structure for the geolocation query request
+class GeoQueryRequest(BaseModel):
+    min_lat: float
+    max_lat: float
+    min_lon: float
+    max_lon: float
+    table: Optional[str] = 'ais_data' # Optional table name, defaults to ais_data
+
 class ChatRequest(BaseModel):
     message: str
     # Update history to use the new model
-    history: List[HistoryMessage] = [] 
+    history: List[HistoryMessage] = []
     image_description: Optional[str] = None
 
 @app.post("/api/chat/stream")
@@ -152,6 +163,62 @@ async def stream_chat(request: ChatRequest):
             yield error_payload
 
     return StreamingResponse(event_stream(), media_type="application/x-ndjson")
+
+# --- New Endpoint for Geolocation Data ---
+@app.post("/api/data/geo")
+async def get_geo_data(request: GeoQueryRequest):
+    """
+    API endpoint to fetch data from ClickHouse based on geographical coordinates.
+    """
+    print(f"Received geo query: Lat({request.min_lat}, {request.max_lat}), Lon({request.min_lon}, {request.max_lon}), Table: {request.table}")
+    try:
+        # Call the data loading function
+        df = load_data_by_geolocation(
+            min_lat=request.min_lat,
+            max_lat=request.max_lat,
+            min_lon=request.min_lon,
+            max_lon=request.max_lon,
+            table=request.table
+            # Client is handled internally by load_data_by_geolocation if not passed
+        )
+
+        if df.empty:
+            # Return 204 No Content if no data found for the criteria
+            # Alternatively, return an empty list: return []
+            # Raising HTTPException might be too strong if "no data" is a valid outcome
+             print("No data found for the specified geolocation.")
+             return [] # Return empty list for no data found
+
+        # --- Data Cleaning --- 
+        # Replace infinity values with NaN
+        df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        # Replace NaN values with None (which becomes null in JSON)
+        # Important: Operate on a copy if you need the original df elsewhere
+        # df = df.where(pd.notnull(df), None) # This converts non-NaNs to objects, slower
+        # More efficient: Iterate through columns and fillna if needed
+        for col in df.select_dtypes(include=np.number).columns:
+             if df[col].isnull().any():
+                  # Use fillna which preserves dtype more often
+                  df[col] = df[col].fillna(np.nan).astype(object).where(df[col].notnull(), None)
+        # Handle potential NaT in datetime columns if necessary
+        for col in df.select_dtypes(include=['datetime64[ns]', 'datetime64[ns, UTC]']).columns:
+            if df[col].isnull().any():
+                # Convert NaT to None before JSON serialization
+                df[col] = df[col].astype(object).where(df[col].notnull(), None)
+        # ---------------------
+
+        # Convert DataFrame to list of dictionaries (JSON serializable)
+        # Using orient='records' is generally correct here
+        data = df.to_dict(orient='records')
+        print(f"Successfully retrieved and cleaned {len(data)} records.")
+        return data
+
+    except Exception as e:
+        print(f"Error processing geo data request: {e}")
+        import traceback
+        traceback.print_exc()
+        # Raise an HTTP exception for internal server errors
+        raise HTTPException(status_code=500, detail=f"Error fetching data: {str(e)}")
 
 
 if __name__ == "__main__":
