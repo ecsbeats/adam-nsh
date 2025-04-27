@@ -19,35 +19,41 @@ const vesselTypes = [
   'Sailing', 'Pleasure Craft', 'High Speed Craft', 'Other'
 ];
 
-// Define 10 geographical locations (bounding boxes)
-interface LocationBox {
+// Define the single target zone
+const oceanGateZone = {
+  name: 'OceanGate Synthetic Zone',
+  centerLat: 37.7749,
+  centerLon: -130.8600,
+  radiusNM: 800,
+};
+
+// Calculate bounding box based on center and radius
+const NM_PER_DEG_LAT = 60.0;
+const latDelta = oceanGateZone.radiusNM / NM_PER_DEG_LAT;
+const lonDelta = oceanGateZone.radiusNM / (NM_PER_DEG_LAT * Math.cos(oceanGateZone.centerLat * Math.PI / 180));
+
+const singleLocationBox: {
   name: string;
   latMin: number; latMax: number;
   lonMin: number; lonMax: number;
-}
+} = {
+  name: oceanGateZone.name,
+  latMin: oceanGateZone.centerLat - latDelta,
+  latMax: oceanGateZone.centerLat + latDelta,
+  lonMin: oceanGateZone.centerLon - lonDelta,
+  lonMax: oceanGateZone.centerLon + lonDelta,
+};
 
-const locations: LocationBox[] = [
-  { name: 'Chesapeake Bay', latMin: 36.5, latMax: 38.5, lonMin: -77.0, lonMax: -75.5 },
-  { name: 'English Channel', latMin: 49.0, latMax: 51.0, lonMin: -6.0, lonMax: 2.0 },
-  { name: 'Strait of Malacca', latMin: 1.0, latMax: 6.0, lonMin: 98.0, lonMax: 104.0 },
-  { name: 'Gulf of Mexico', latMin: 18.0, latMax: 30.0, lonMin: -98.0, lonMax: -81.0 },
-  { name: 'Mediterranean Sea (East)', latMin: 31.0, latMax: 37.0, lonMin: 18.0, lonMax: 36.0 },
-  { name: 'North Sea', latMin: 51.0, latMax: 61.0, lonMin: -4.0, lonMax: 9.0 },
-  { name: 'South China Sea', latMin: 5.0, latMax: 20.0, lonMin: 105.0, lonMax: 120.0 },
-  { name: 'Persian Gulf', latMin: 24.0, latMax: 30.0, lonMin: 48.0, lonMax: 56.0 },
-  { name: 'Sea of Japan', latMin: 33.0, latMax: 45.0, lonMin: 128.0, lonMax: 142.0 },
-  { name: 'Caribbean Sea', latMin: 10.0, latMax: 22.0, lonMin: -85.0, lonMax: -60.0 },
-];
-
-// Generate 1000 sample vessels (100 per location)
-export const sampleVessels: AISData[] = locations.flatMap(location => 
-  Array.from({ length: 100 }, (_, i) => {
-    const lat = randomInRange(location.latMin, location.latMax, 3);
-    const lon = randomInRange(location.lonMin, location.lonMax, 3);
+// Generate 1000 sample vessels within the single OceanGate zone
+export const sampleVessels: AISData[] = 
+  Array.from({ length: 1000 }, (_, i) => {
+    // Use the calculated singleLocationBox
+    const lat = randomInRange(singleLocationBox.latMin, singleLocationBox.latMax, 4); // Increased precision
+    const lon = randomInRange(singleLocationBox.lonMin, singleLocationBox.lonMax, 4); // Increased precision
     const heading = randomInRange(0, 359);
     const speed = randomInRange(0, 25, 1);
     const typeIndex = randomInRange(0, vesselTypes.length - 1);
-    const vesselName = `${location.name.substring(0, 3).toUpperCase()}-${randomString(4, '0123456789')}`;
+    const vesselName = `${singleLocationBox.name.substring(0, 3).toUpperCase()}-${randomString(4, '0123456789')}`;
     const callSign = `W${randomString(3)}${randomString(4, '0123456789')}`;
     const vesselId = randomString(9, '0123456789');
 
@@ -66,5 +72,5 @@ export const sampleVessels: AISData[] = locations.flatMap(location =>
         type: vesselTypes[typeIndex]
       }
     };
-  })
+  }
 );

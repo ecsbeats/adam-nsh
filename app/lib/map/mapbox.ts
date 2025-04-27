@@ -9,9 +9,9 @@ export const MAPBOX_CONFIG = {
     satelliteStreets: 'mapbox://styles/mapbox/satellite-streets-v12', // Satellite with streets overlay
   },
   initialView: {
-    longitude: -76.6, // Chesapeake Bay area
-    latitude: 37.8,
-    zoom: 6,
+    longitude: -122.42, // San Francisco area
+    latitude: 37.77,
+    zoom: 9, // Zoomed out view of city and bay
   },
 };
 
