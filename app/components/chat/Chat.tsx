@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import MessageBubble from './messages/MessageBubble'
 
 type MessageType = 'user' | 'assistant'
@@ -23,13 +23,22 @@ export default function Chat() {
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const messagesEndRef = useRef<HTMLDivElement>(null) // Ref for scrolling
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
+  }
+
+  useEffect(() => {
+    scrollToBottom()
+  }, [messages, isLoading]); // Scroll on new messages or loading state change
 
   const sendMessage = (e: React.FormEvent) => {
     e.preventDefault()
     
-    if (!input.trim()) return
+    if (!input.trim() || isLoading) return // Prevent sending empty or during loading
     
-    // Create new message
+    // Create new user message
     const newMessage: Message = {
       id: Date.now().toString(),
       content: input,
@@ -37,9 +46,8 @@ export default function Chat() {
       timestamp: new Date()
     }
     
-    // Add user message
     setMessages(prev => [...prev, newMessage])
-    setInput('')
+    setInput('') // Clear input after sending
     setIsLoading(true)
     
     // Simulate assistant response
@@ -57,7 +65,7 @@ export default function Chat() {
 
   return (
     <div className="w-96 flex flex-col bg-black font-mono text-neutral-300">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700">
+      <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-700 flex-shrink-0">
         <h2 className="font-medium text-sm text-neutral-400">Console</h2>
         <button className="text-neutral-500 hover:text-neutral-400">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
@@ -66,23 +74,21 @@ export default function Chat() {
         </button>
       </div>
       
+      {/* Scrollable message area */}
       <div className="flex-1 overflow-y-auto p-3 space-y-3 text-sm">
         {messages.map((message) => (
           <MessageBubble 
             key={message.id} 
-            message={message.content}
+            message={message.content} // Pass message content
             isUser={message.type === 'user'}
           />
         ))}
         
         {isLoading && (
-          <div className="flex justify-start">
-            <div className="w-6 h-6 bg-neutral-800 flex items-center justify-center mr-2 flex-shrink-0">
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4 text-neutral-400">
-                <path d="M10 9a3 3 0 100-6 3 3 0 000 6zM6 8a2 2 0 11-4 0 2 2 0 014 0zM1.49 15.326a.78.78 0 01-.358-.442 3 3 0 014.308-3.516 6.484 6.484 0 00-1.905 3.959c-.023.222-.014.442.025.654a4.97 4.97 0 01-2.07-.655zM16.44 15.98a4.97 4.97 0 002.07-.654.78.78 0 00.357-.442 3 3 0 00-4.308-3.517 6.484 6.484 0 011.907 3.96 2.32 2.32 0 01-.026.654zM18 8a2 2 0 11-4 0 2 2 0 014 0zM5.304 16.19a.844.844 0 01-.277-.71 5 5 0 019.947 0 .843.843 0 01-.277.71A6.975 6.975 0 0110 18a6.974 6.974 0 01-4.696-1.81z" />
-              </svg>
-            </div>
-            <div className="bg-neutral-800 px-3 py-1.5 max-w-[80%]">
+          <div className="flex items-start">
+             <span className={`mr-2 flex-shrink-0 text-green-400`}>{'>'}</span>
+             {/* Loading indicator styled like a message bubble */}
+            <div className="bg-neutral-800 px-3 py-1.5 max-w-[80%] inline-block">
               <div className="flex space-x-1">
                 <div className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-pulse"></div>
                 <div className="w-1.5 h-1.5 bg-neutral-500 rounded-full animate-pulse delay-75"></div>
@@ -91,28 +97,28 @@ export default function Chat() {
             </div>
           </div>
         )}
+
+        {/* Input form integrated into the message flow */} 
+        {!isLoading && (
+          <form onSubmit={sendMessage} className="flex items-start">
+            <span className="mr-2 text-blue-400">$</span>
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              className="flex-1 bg-transparent text-neutral-100 focus:outline-none"
+              autoFocus // Automatically focus the input
+            />
+            {/* Submit button can be hidden or styled differently if needed */}
+             <button type="submit" className="hidden"></button> 
+          </form>
+        )}
+
+        {/* Dummy div to help scroll to bottom */}
+        <div ref={messagesEndRef} /> 
       </div>
-      
-      <form onSubmit={sendMessage} className="relative flex items-center p-3 border-t border-neutral-700">
-        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500">$</span>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          className="w-full pl-8 pr-12 py-2 bg-transparent text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
-          placeholder="Enter command..."
-        />
-        <button 
-          type="submit"
-          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-blue-400 hover:text-blue-300 disabled:text-neutral-600 disabled:cursor-not-allowed"
-          disabled={!input.trim() || isLoading}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-5 h-5">
-            <path fillRule="evenodd" d="M15.625 8.75a.75.75 0 01.75.75v3a.75.75 0 01-1.5 0V9.5h-8.375a.75.75 0 010-1.5h8.375v-1a.75.75 0 01.75-.75z" clipRule="evenodd" />
-            <path d="M10 18a8 8 0 100-16 8 8 0 000 16zm0-1.5a6.5 6.5 0 110-13 6.5 6.5 0 010 13z" />
-          </svg>
-        </button>
-      </form>
+
+      {/* Removed the separate form from here */}
     </div>
   )
 }
