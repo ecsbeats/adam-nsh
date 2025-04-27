@@ -7,97 +7,155 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import uvicorn
 import asyncio
+import json
+from typing import List, Optional
 
-# Load environment variables (especially OLLAMA_BASE_URL, OLLAMA_MODEL)
+from agent import MapChatAgent
+
 load_dotenv()
 
 app = FastAPI()
 
-# --- CORS Configuration ---
-# Define the origins allowed to access your backend.
-# Adjust 'http://localhost:3000' if your frontend runs on a different port.
 origins = [
-    "http://localhost:3000", # Default Next.js dev server
-    "http://127.0.0.1:3000", # Alternate localhost
-    # Add other origins if needed (e.g., your deployed frontend URL)
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins, # List of allowed origins
-    allow_credentials=True, # Allows cookies to be included in requests
-    allow_methods=["*"],    # Allows all methods (GET, POST, OPTIONS, etc.)
-    allow_headers=["*"],    # Allows all headers
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# --- DSPy Configuration (Ollama Only) ---
 ollama_base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-ollama_model = os.getenv("OLLAMA_MODEL", "gemma3:27b") # User specified model
+ollama_model = os.getenv("OLLAMA_MODEL", "gemma3:27b")
 
 llm = None
+agent = None
+
 if ollama_base_url and ollama_model:
     print(f"Configuring DSPy with Ollama: model={ollama_model} at {ollama_base_url}...")
     try:
-        llm = dspy.LM(model="openai/" + ollama_model, api_key="ollama", api_base=ollama_base_url + '/v1') # api_key required but not used by Ollama
+        llm = dspy.LM(model="openai/" + ollama_model, api_key="ollama", api_base=ollama_base_url + '/v1')
         dspy.settings.configure(lm=llm)
         print("DSPy configured with Ollama.")
+        agent = MapChatAgent()
+        print("MapChatAgent initialized.")
     except Exception as e:
-        print(f"Error configuring DSPy with Ollama: {e}")
-        llm = None # Ensure llm is None if config fails
+        print(f"Error configuring DSPy/Agent: {e}")
+        llm = None
+        agent = None
 else:
     print("Warning: Ollama settings (OLLAMA_BASE_URL, OLLAMA_MODEL) not found or incomplete. API will likely fail.")
 
+# Define the structure for a single message in the history
+class HistoryMessage(BaseModel):
+    role: str
+    content: str
 
-# --- Pydantic Model for Request ---
 class ChatRequest(BaseModel):
     message: str
-    # Optional: Add conversation history, user ID, etc. later
-    # history: list = []
+    # Update history to use the new model
+    history: List[HistoryMessage] = [] 
+    image_description: Optional[str] = None
 
-# --- Basic DSPy Signature for QA ---
-class BasicQA(dspy.Signature):
-    """Answer questions concisely."""
-    question = dspy.InputField()
-    answer = dspy.OutputField(desc="A concise answer to the question.")
-
-# --- Simple DSPy Predict Module ---
-qa_predictor = dspy.Predict(BasicQA)
-
-
-# --- Streaming Endpoint ---
 @app.post("/api/chat/stream")
 async def stream_chat(request: ChatRequest):
-    """
-    Receives a chat message and streams back the DSPy agent's response.
-    Uses simulated streaming by generating the full response first.
-    """
-    print(f"Received message: {request.message}")
+    print(f"Received message: {request.message}, History: {len(request.history)} items, Image Desc: {'Yes' if request.image_description else 'No'}")
 
     async def event_stream():
-        if not dspy.settings.lm:
-            yield "Error: LLM not configured. Please check Ollama settings."
+        delimiter = "\n"
+
+        if not agent:
+            error_payload = json.dumps({"type": "error", "content": "Agent not configured. Check server logs."}) + delimiter
+            yield error_payload
             return
 
         try:
-            response = qa_predictor(question=request.message)
-            answer = response.answer if hasattr(response, 'answer') else "Error: Could not generate response."
+            prediction = agent.forward(
+                user_input=request.message,
+                chat_history=[msg.content for msg in request.history],
+                image_description=request.image_description
+            )
 
-            words = answer.split()
-            for i, word in enumerate(words):
-                yield word + (" " if i < len(words) - 1 else "") # Add space except for last word
-                await asyncio.sleep(0.05) # Small delay between words
+            action = getattr(prediction, 'action', None)
+            action_input_str = getattr(prediction, 'action_input', None)
+            
+            print(f"Agent raw prediction: Action='{action}', Input='{action_input_str}'")
+
+            if action == 'zoom' and action_input_str:
+                try:
+                    tool_args = json.loads(action_input_str)
+                    payload = {
+                        "type": "tool_call",
+                        "tool_name": "zoom",
+                        "args": tool_args
+                    }
+                    yield json.dumps(payload) + delimiter
+                    print(f"Yielded Tool Call: {payload}")
+                except json.JSONDecodeError as json_e:
+                    print(f"Error parsing tool arguments JSON: {json_e}, Input: {action_input_str}")
+                    error_payload = json.dumps({"type": "error", "content": f"Agent returned invalid tool arguments: {action_input_str}"}) + delimiter
+                    yield error_payload
+                except Exception as tool_e:
+                    print(f"Error processing tool action: {tool_e}")
+                    error_payload = json.dumps({"type": "error", "content": f"Error processing tool action: {str(tool_e)}"}) + delimiter
+                    yield error_payload
+
+            elif action == 'final_answer' and action_input_str:
+                answer_text = action_input_str
+                words = answer_text.split()
+                if not words:
+                    payload = {"type": "text", "content": ""}
+                    yield json.dumps(payload) + delimiter
+                    
+                for i, word in enumerate(words):
+                    content = word + (" " if i < len(words) - 1 else "")
+                    payload = {"type": "text", "content": content}
+                    yield json.dumps(payload) + delimiter
+                    await asyncio.sleep(0.05)
+                print(f"Yielded Final Answer: {answer_text}")
+
+            elif hasattr(prediction, 'answer'):
+                 answer_text = prediction.answer
+                 print(f"Agent gave direct answer (fallback): {answer_text}")
+                 words = answer_text.split()
+                 if not words:
+                     payload = {"type": "text", "content": ""}
+                     yield json.dumps(payload) + delimiter
+                 for i, word in enumerate(words):
+                     content = word + (" " if i < len(words) - 1 else "")
+                     payload = {"type": "text", "content": content}
+                     yield json.dumps(payload) + delimiter
+                     await asyncio.sleep(0.05)
+
+            else:
+                 print(f"Warning: Agent prediction structure unexpected: {prediction}")
+                 unknown_response = str(prediction)
+                 words = unknown_response.split()
+                 if not words:
+                     payload = {"type": "text", "content": ""}
+                     yield json.dumps(payload) + delimiter
+                 for i, word in enumerate(words):
+                     content = word + (" " if i < len(words) - 1 else "")
+                     payload = {"type": "text", "content": content}
+                     yield json.dumps(payload) + delimiter
+                     await asyncio.sleep(0.05)
 
         except Exception as e:
-            print(f"Error during DSPy generation/stream: {e}")
-            yield f"\nError: Could not process the request. Details: {str(e)}"
+            print(f"Error during agent execution/stream: {e}")
+            import traceback
+            traceback.print_exc()
+            error_payload = json.dumps({"type": "error", "content": f"Error processing request: {str(e)}"}) + delimiter
+            yield error_payload
 
-    return StreamingResponse(event_stream(), media_type="text/plain")
+    return StreamingResponse(event_stream(), media_type="application/x-ndjson")
 
 
-# --- Run the server (for local testing) ---
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     host = os.getenv("HOST", "0.0.0.0")
     print(f"Starting Uvicorn server on http://{host}:{port}")
-    # Use reload=True for development, consider reload=False for production
     uvicorn.run("main:app", host=host, port=port, reload=True)
