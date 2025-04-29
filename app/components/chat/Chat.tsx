@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import MessageBubble from './messages/MessageBubble'
+import { MapHandle, MapSummaryData } from '../map/Map'
 
 interface DisplayMessage {
   id: string
@@ -19,11 +20,11 @@ interface HistoryMessage {
 export type ZoomRequestCallback = (location: string, level: number) => Promise<string | null>;
 
 interface ChatProps {
-  // Use the exported type here
   onZoomRequest?: ZoomRequestCallback;
+  mapRef?: React.RefObject<MapHandle>;
 }
 
-export default function Chat({ onZoomRequest }: ChatProps) {
+export default function Chat({ onZoomRequest, mapRef }: ChatProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>([
     { id: 'initial', content: 'Console ready. Enter commands or queries.', type: 'assistant', timestamp: new Date() }
   ])
@@ -89,24 +90,61 @@ export default function Chat({ onZoomRequest }: ChatProps) {
       imageDescription = "Map interaction skipped (no handler).";
     }
 
-    // Don't update history here; the agent knows it requested the zoom.
-    // setConversationHistory(prev => [...prev, { role: 'assistant', content: `Okay, zooming to ${location}.` }]);
-
-    // Send the image description back to the backend. The agent will use this.
-    // The 'messageToSend' can be minimal as the imageDesc is the key info.
-    await sendBackendRequest("Tool execution result:", conversationHistory, imageDescription);
+    // Send the image description back to the backend.
+    await sendBackendRequest("Zoom tool result:", conversationHistory, imageDescription, null);
   }, [onZoomRequest, conversationHistory]);
+
+  const handleMapSummaryRequest = useCallback(async () => {
+    if (!mapRef?.current?.getMapSummaryData) {
+      console.error("Map ref or getMapSummaryData method not available.");
+      setMessages(prev => prev.map(msg => msg.id.startsWith('assistant-') && msg.content === '...' 
+          ? { ...msg, content: "Error: Cannot access map to get summary." }
+          : msg));
+      return;
+    }
+
+    // Update placeholder message
+    setMessages(prev => prev.map(msg => 
+        msg.id.startsWith('assistant-') && msg.content === '...'
+        ? { ...msg, content: `Generating map summary...` }
+        : msg
+    ));
+
+    let summaryData: MapSummaryData | null = null;
+    try {
+      console.log("Requesting map summary data from Map component...");
+      summaryData = await mapRef.current.getMapSummaryData();
+      console.log("Received map summary data:", summaryData);
+      if (summaryData.error) {
+         throw new Error(summaryData.error);
+      }
+    } catch (error) {
+      console.error("Error getting map summary data:", error);
+      setMessages(prev => prev.map(msg => msg.id.startsWith('assistant-') && msg.content === '...' 
+          ? { ...msg, content: `Error getting map summary: ${(error as Error).message}` }
+          : msg));
+      // Decide if you want to proceed or stop here on error
+      // For now, send back the error message as the tool result
+      summaryData = { count: 0, error: `Error getting map summary: ${(error as Error).message}` };
+    }
+
+    // Send the summary data back to the backend as the tool_result
+    // The user message can be minimal, indicating the tool result is attached
+    await sendBackendRequest("Map summary result:", conversationHistory, null, summaryData);
+
+  }, [mapRef, conversationHistory]);
 
   const sendBackendRequest = async (
     messageToSend: string, 
     currentHistory: HistoryMessage[], 
-    imageDesc: string | null
+    imageDesc: string | null,
+    toolResult: MapSummaryData | null
   ) => {
     setIsLoading(true);
     const assistantMessageId = `assistant-${Date.now()}`;
     let currentAssistantContent = '';
     let finalAssistantMessageForHistory = '';
-    let toolCalled = false;
+    let toolCallRequestSent = false;
 
     const assistantPlaceholder: DisplayMessage = {
       id: assistantMessageId,
@@ -125,7 +163,8 @@ export default function Chat({ onZoomRequest }: ChatProps) {
         body: JSON.stringify({ 
           message: messageToSend, 
           history: currentHistory, 
-          image_description: imageDesc 
+          image_description: imageDesc, 
+          tool_result: toolResult
         }),
       })
 
@@ -145,7 +184,6 @@ export default function Chat({ onZoomRequest }: ChatProps) {
       const decoder = new TextDecoder()
       let buffer = '';
 
-      // Function to process complete JSON messages from the buffer
       const processCompleteMessages = () => {
         let separatorIndex;
         while ((separatorIndex = buffer.indexOf('\n')) >= 0) {
@@ -166,22 +204,30 @@ export default function Chat({ onZoomRequest }: ChatProps) {
                   )
                 );
                 finalAssistantMessageForHistory += parsed.content; // Accumulate for history
-              } else if (parsed.type === 'tool_call' && parsed.tool_name === 'zoom') {
+              } else if (parsed.type === 'tool_call') {
                 console.log("Received tool_call:", parsed);
-                toolCalled = true;
-                handleZoomRequest(parsed.args); // Trigger the zoom
-                // Optionally clear current text or add a message like "Attempting zoom..."
-                // currentAssistantContent = 'Attempting zoom...'; 
+                toolCallRequestSent = true;
+                
+                // Update UI to indicate tool use
                 setMessages((prevMessages) =>
                   prevMessages.map((msg) =>
                     msg.id === assistantMessageId
-                      ? { ...msg, content: currentAssistantContent || `Attempting zoom...` } // Placeholder during zoom
+                      ? { ...msg, content: `Executing tool: ${parsed.tool_name}...` }
                       : msg
                   )
                 );
-                // Don't add agent's decision to zoom to history here, 
-                // handleZoomRequest will call sendBackendRequest again after completion.
-                finalAssistantMessageForHistory = ''; // Reset history accumulation if tool is called
+                
+                // Trigger the specific handler based on tool_name
+                if (parsed.tool_name === 'zoom') {
+                  handleZoomRequest(parsed.args);
+                } else if (parsed.tool_name === 'get_map_summary') {
+                  handleMapSummaryRequest();
+                } else {
+                   console.warn(`Unhandled tool requested: ${parsed.tool_name}`);
+                   // Show error in UI?
+                }
+                
+                finalAssistantMessageForHistory = ''; // Reset history accumulation
               } else if (parsed.type === 'error') {
                 console.error("Received error from backend:", parsed.content);
                 currentAssistantContent = `Error: ${parsed.content}`;
@@ -228,8 +274,8 @@ export default function Chat({ onZoomRequest }: ChatProps) {
         processCompleteMessages();
       }
 
-      // Update history only if no tool was called (tool calls handle their own follow-up)
-      if (!toolCalled && finalAssistantMessageForHistory.trim()) {
+      // Update history only if no tool call was requested this turn
+      if (!toolCallRequestSent && finalAssistantMessageForHistory.trim()) {
         setConversationHistory(prev => [
           ...prev, 
           { role: 'assistant', content: finalAssistantMessageForHistory.trim() } 
@@ -254,24 +300,24 @@ export default function Chat({ onZoomRequest }: ChatProps) {
 
   const sendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    if (!input.trim() || isLoading) return;
+    if (!input.trim() || isLoading) return
 
-    const userMessageContent = input;
-    const userMessageForDisplay: DisplayMessage = {
-      id: Date.now().toString(),
-      content: userMessageContent,
+    const userMessage: DisplayMessage = {
+      id: `user-${Date.now()}`,
+      content: input,
       type: 'user',
       timestamp: new Date()
     }
-    const userMessageForHistory: HistoryMessage = { role: 'user', content: userMessageContent };
-
-    setMessages(prev => [...prev, userMessageForDisplay])
+    setMessages(prev => [...prev, userMessage])
+    const currentInput = input;
     setInput('')
     
-    const updatedHistory = [...conversationHistory, userMessageForHistory];
-    setConversationHistory(updatedHistory);
+    // Ensure the role is correctly typed for the history state
+    const currentHistory: HistoryMessage[] = [...conversationHistory, { role: 'user', content: currentInput }];
+    setConversationHistory(currentHistory); // Update history immediately
 
-    await sendBackendRequest(userMessageContent, updatedHistory, null); 
+    // Send request without image description initially, and no tool result
+    await sendBackendRequest(currentInput, currentHistory, null, null); 
   }
 
   return (

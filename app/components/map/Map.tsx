@@ -9,8 +9,21 @@ import { AISData } from '@/lib/adapters/types'
 import VesselMarker from './VesselMarker'
 import MapStyleIndicator from './MapStyleIndicator'
 
+export interface MapSummaryData {
+  count: number;
+  center?: { lng: number; lat: number };
+  zoom?: number;
+  bounds?: mapboxgl.LngLatBounds;
+  screenshotDataURL?: string;
+  biggestShip?: AISData | null;
+  fastestShip?: AISData | null;
+  smallestShip?: AISData | null;
+  error?: string;
+}
+
 export interface MapHandle {
   triggerZoomAndGetDescription: (location: string, level: number) => Promise<string | null>;
+  getMapSummaryData: () => Promise<MapSummaryData>;
 }
 
 const Map = forwardRef<MapHandle>((props, ref) => {
@@ -102,6 +115,86 @@ const Map = forwardRef<MapHandle>((props, ref) => {
          console.error("Map Handle: Coordinates were null after geocoding attempt.");
          return "Error: Could not determine coordinates for zooming after geocoding.";
       }
+    },
+    getMapSummaryData: async (): Promise<MapSummaryData> => {
+      console.log("Map Handle: getMapSummaryData called");
+      if (!map.current || !mapLoaded) {
+        console.error("Map Handle: getMapSummaryData called before map ready.");
+        return { count: 0, error: "Map not ready" };
+      }
+
+      try {
+        const currentMap = map.current;
+        const currentBounds = currentMap.getBounds();
+        const currentCenter = currentMap.getCenter();
+        const currentZoom = currentMap.getZoom();
+
+        // Filter for visible vessels (add null check for bounds)
+        const visibleVessels = currentBounds 
+          ? vessels.filter(v => 
+              v.position && 
+              v.position.lat != null && 
+              v.position.lon != null && 
+              currentBounds.contains([v.position.lon, v.position.lat])
+            )
+          : []; // Empty array if bounds are null
+        const count = visibleVessels.length;
+
+        let biggestShip: AISData | null = null;
+        let fastestShip: AISData | null = null;
+        let smallestShip: AISData | null = null;
+
+        if (count > 0) {
+          // Calculate area for size comparison (handle missing Length/Width)
+          const getArea = (v: AISData) => (v.Length ?? 0) * (v.Width ?? 0);
+          
+          visibleVessels.forEach(v => {
+            // Biggest
+            if (!biggestShip || getArea(v) > getArea(biggestShip)) {
+              biggestShip = v;
+            }
+            // Smallest (only if Length/Width are present)
+            if (v.Length && v.Width && (!smallestShip || getArea(v) < getArea(smallestShip))) {
+               smallestShip = v;
+            }
+            // Fastest (handle missing speed)
+            if (v.speed != null && (!fastestShip || v.speed > (fastestShip.speed ?? -1))) {
+              fastestShip = v;
+            }
+          });
+        }
+
+        // Generate screenshot (only if needed and supported)
+        let screenshotDataURL: string | undefined = undefined;
+        try {
+           // Preserve drawing buffer is needed for toDataURL to work reliably *after* render.
+           // This needs to be set during map initialization.
+           // If not set, this might return a blank/black image.
+          screenshotDataURL = currentMap.getCanvas().toDataURL();
+          console.log("Map Handle: Screenshot generated (length approx:", screenshotDataURL?.length, ")");
+        } catch (e) {
+           console.error("Map Handle: Error generating screenshot", e);
+           // Might fail due to CORS/tainted canvas if using external resources in style
+           screenshotDataURL = undefined; // Ensure it's undefined on error
+        }
+
+        const summaryData: MapSummaryData = {
+          count,
+          center: currentCenter ?? undefined, // Handle potential null center
+          zoom: currentZoom ?? undefined, // Handle potential null zoom
+          bounds: currentBounds ?? undefined, // Handle potential null bounds
+          screenshotDataURL,
+          biggestShip,
+          fastestShip,
+          smallestShip
+        };
+        console.log("Map Handle: Generated summary data:", summaryData);
+        return summaryData;
+
+      } catch (error) {
+        console.error("Map Handle: Error generating map summary:", error);
+        return { count: 0, error: `Failed to generate summary: ${(error as Error).message}` };
+      }
     }
   }));
 
@@ -173,6 +266,7 @@ const Map = forwardRef<MapHandle>((props, ref) => {
         center: [MAPBOX_CONFIG.initialView.longitude, MAPBOX_CONFIG.initialView.latitude],
         zoom: MAPBOX_CONFIG.initialView.zoom,
         attributionControl: false,
+        preserveDrawingBuffer: true
       });
 
       newMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -243,7 +337,6 @@ const Map = forwardRef<MapHandle>((props, ref) => {
       <div ref={mapContainer} className="w-full h-full" />
       
       {mapLoaded && showVessels && vessels.map(vessel => {
-        console.log("Using key:", vessel.uniqueKey);
         return (
           <VesselMarker
             key={vessel.uniqueKey}

@@ -68,16 +68,17 @@ class GeoQueryRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str
-    # Update history to use the new model
     history: List[HistoryMessage] = []
     image_description: Optional[str] = None
+    tool_result: Optional[dict] = None # Add field for tool results from frontend
 
 @app.post("/api/chat/stream")
 async def stream_chat(request: ChatRequest):
-    print(f"Received message: {request.message}, History: {len(request.history)} items, Image Desc: {'Yes' if request.image_description else 'No'}")
+    print(f"Received message: {request.message}, History: {len(request.history)} items, Image Desc: {'Yes' if request.image_description else 'No'}, Tool Result: {'Yes' if request.tool_result else 'No'}")
 
     async def event_stream():
         delimiter = "\n"
+        response_generated = False # Flag to track if any response was sent
 
         if not agent:
             error_payload = json.dumps({"type": "error", "content": "Agent not configured. Check server logs."}) + delimiter
@@ -85,50 +86,65 @@ async def stream_chat(request: ChatRequest):
             return
 
         try:
+            # --- Agent Prediction --- 
+            # Pass tool_result to the agent
             prediction = agent.forward(
                 user_input=request.message,
                 chat_history=[msg.content for msg in request.history],
-                image_description=request.image_description
+                image_description=request.image_description,
+                tool_result=request.tool_result # Pass the tool result here
             )
 
             action = getattr(prediction, 'action', None)
-            action_input_str = getattr(prediction, 'action_input', None)
-            
+            action_input_str = getattr(prediction, 'action_input', "") # Default to empty string
+
             print(f"Agent raw prediction: Action='{action}', Input='{action_input_str}'")
 
-            if action == 'zoom' and action_input_str:
-                try:
-                    tool_args = json.loads(action_input_str)
-                    payload = {
-                        "type": "tool_call",
-                        "tool_name": "zoom",
-                        "args": tool_args
-                    }
-                    yield json.dumps(payload) + delimiter
-                    print(f"Yielded Tool Call: {payload}")
-                except json.JSONDecodeError as json_e:
-                    print(f"Error parsing tool arguments JSON: {json_e}, Input: {action_input_str}")
-                    error_payload = json.dumps({"type": "error", "content": f"Agent returned invalid tool arguments: {action_input_str}"}) + delimiter
-                    yield error_payload
-                except Exception as tool_e:
-                    print(f"Error processing tool action: {tool_e}")
-                    error_payload = json.dumps({"type": "error", "content": f"Error processing tool action: {str(tool_e)}"}) + delimiter
-                    yield error_payload
+            # --- Handle Actions --- 
 
-            elif action == 'final_answer' and action_input_str:
+            # 1. Request Tool Execution from Frontend
+            if action in ["zoom", "get_map_summary"]:
+                tool_name = action
+                tool_args = {}
+                if tool_name == 'zoom':
+                    try:
+                        tool_args = json.loads(action_input_str or "{}")
+                    except json.JSONDecodeError as json_e:
+                        print(f"Error parsing zoom tool arguments JSON: {json_e}, Input: {action_input_str}")
+                        error_payload = json.dumps({"type": "error", "content": f"Agent returned invalid zoom arguments: {action_input_str}"}) + delimiter
+                        yield error_payload
+                        return # Stop processing on error
+                # For get_map_summary, args remain {}
+                
+                payload = {
+                    "type": "tool_call",
+                    "tool_name": tool_name,
+                    "args": tool_args
+                }
+                yield json.dumps(payload) + delimiter
+                response_generated = True
+                print(f"Yielded Tool Call Request: {payload}")
+                # Stop processing here, wait for frontend to send back result in next request
+
+            # 2. Generate Final Answer (potentially using tool_result implicitly via agent.forward)
+            elif action == 'final_answer':
                 answer_text = action_input_str
+                # Stream the final answer text
                 words = answer_text.split()
                 if not words:
                     payload = {"type": "text", "content": ""}
                     yield json.dumps(payload) + delimiter
-                    
-                for i, word in enumerate(words):
-                    content = word + (" " if i < len(words) - 1 else "")
-                    payload = {"type": "text", "content": content}
-                    yield json.dumps(payload) + delimiter
-                    await asyncio.sleep(0.05)
+                    response_generated = True
+                else:
+                    for i, word in enumerate(words):
+                        content = word + (" " if i < len(words) - 1 else "")
+                        payload = {"type": "text", "content": content}
+                        yield json.dumps(payload) + delimiter
+                        await asyncio.sleep(0.05)
+                    response_generated = True
                 print(f"Yielded Final Answer: {answer_text}")
 
+            # 3. Fallback/Direct Answer (if agent structure differs)
             elif hasattr(prediction, 'answer'):
                  answer_text = prediction.answer
                  print(f"Agent gave direct answer (fallback): {answer_text}")
@@ -136,24 +152,24 @@ async def stream_chat(request: ChatRequest):
                  if not words:
                      payload = {"type": "text", "content": ""}
                      yield json.dumps(payload) + delimiter
-                 for i, word in enumerate(words):
-                     content = word + (" " if i < len(words) - 1 else "")
-                     payload = {"type": "text", "content": content}
-                     yield json.dumps(payload) + delimiter
-                     await asyncio.sleep(0.05)
+                     response_generated = True
+                 else:
+                    for i, word in enumerate(words):
+                        content = word + (" " if i < len(words) - 1 else "")
+                        payload = {"type": "text", "content": content}
+                        yield json.dumps(payload) + delimiter
+                        await asyncio.sleep(0.05)
+                    response_generated = True
 
+            # 4. Handle unexpected predictions
             else:
-                 print(f"Warning: Agent prediction structure unexpected: {prediction}")
-                 unknown_response = str(prediction)
-                 words = unknown_response.split()
-                 if not words:
-                     payload = {"type": "text", "content": ""}
-                     yield json.dumps(payload) + delimiter
-                 for i, word in enumerate(words):
-                     content = word + (" " if i < len(words) - 1 else "")
-                     payload = {"type": "text", "content": content}
-                     yield json.dumps(payload) + delimiter
-                     await asyncio.sleep(0.05)
+                print(f"Warning: Agent prediction structure unexpected or no action taken: {prediction}")
+                # Optionally send a generic response or error
+                # For now, do nothing if no clear action/answer
+                if not response_generated:
+                    fallback_payload = json.dumps({"type": "text", "content": "Sorry, I encountered an issue determining the next step."}) + delimiter
+                    yield fallback_payload
+                    response_generated = True
 
         except Exception as e:
             print(f"Error during agent execution/stream: {e}")
